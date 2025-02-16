@@ -1,7 +1,7 @@
- // Configurações do sistema (senha e WhatsApp) ofuscados com base64
- const SYSTEM_CONFIG = (() => {
+// Configurações do sistema (senha e WhatsApp) ofuscados com base64
+const SYSTEM_CONFIG = (() => {
     const encryptedPassword = 'MTIzNDU='; // ps
-    const whatsappNumber = 'NTU4NTkxOTQxMDQ2'; //zp
+    const whatsappNumber = 'NTU4NTkxOTQxMDQ2'; // zp
 
     return {
         getPassword: () => atob(encryptedPassword),
@@ -10,9 +10,21 @@
 })();
 
 // Armazenamento de produtos
-const products = JSON.parse(localStorage.getItem('products')) || [];
+let products = [];
 let editIndex = null;
 const selectedProducts = [];
+
+// Função para carregar produtos do servidor
+async function loadProducts() {
+    try {
+        const response = await fetch('/api/products');
+        const data = await response.json();
+        products = data.products;
+        renderProducts();
+    } catch (error) {
+        console.error('Erro ao carregar produtos:', error);
+    }
+}
 
 // Renderizar produtos
 function renderProducts() {
@@ -46,30 +58,28 @@ function renderProducts() {
 }
 
 // Função para autenticar o dono
-// Função para autenticar o dono
-function accessAdmin() {
-const password = prompt('Digite a senha de acesso:');
-if (password === SYSTEM_CONFIG.getPassword()) {
-document.getElementById('loginSection').style.display = 'none';
-document.getElementById('adminSection').style.display = 'block';
-document.title = 'Padaria App'; // Título para o dono
-renderProducts();
-} else {
-alert('Senha incorreta!');
-}
+async function accessAdmin() {
+    const password = prompt('Digite a senha de acesso:');
+    if (password === SYSTEM_CONFIG.getPassword()) {
+        document.getElementById('loginSection').style.display = 'none';
+        document.getElementById('adminSection').style.display = 'block';
+        document.title = 'Padaria App'; // Título para o dono
+        await loadProducts();
+    } else {
+        alert('Senha incorreta!');
+    }
 }
 
 // Função para acessar como cliente
 function accessClient() {
-document.getElementById('loginSection').style.display = 'none';
-document.getElementById('clientSection').style.display = 'block';
-document.title = 'Cardápio'; // Título para o cliente
-renderProducts();
+    document.getElementById('loginSection').style.display = 'none';
+    document.getElementById('clientSection').style.display = 'block';
+    document.title = 'Cardápio'; // Título para o cliente
+    loadProducts();
 }
 
-
 // Adicionar ou editar produto
-function addOrUpdateProduct() {
+async function addOrUpdateProduct() {
     const name = document.getElementById('productName').value;
     const price = parseFloat(document.getElementById('productPrice').value);
     const image = document.getElementById('productImage').value;
@@ -79,15 +89,37 @@ function addOrUpdateProduct() {
         return;
     }
 
-    if (editIndex !== null) {
-        products[editIndex] = { name, price, image };
-        editIndex = null;
-    } else {
-        products.push({ name, price, image });
+    try {
+        if (editIndex !== null) {
+            // Atualizar produto existente
+            const productId = products[editIndex].id;
+            const response = await fetch(`/api/products/${productId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, price, image }),
+            });
+            const data = await response.json();
+            if (data.success) {
+                editIndex = null;
+                await loadProducts();
+            }
+        } else {
+            // Adicionar novo produto
+            const response = await fetch('/api/products', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, price, image }),
+            });
+            const data = await response.json();
+            if (data.success) {
+                await loadProducts();
+            }
+        }
+    } catch (error) {
+        console.error('Erro ao salvar produto:', error);
     }
 
-    localStorage.setItem('products', JSON.stringify(products));
-    renderProducts();
+    // Limpar campos
     document.getElementById('productName').value = '';
     document.getElementById('productPrice').value = '';
     document.getElementById('productImage').value = '';
@@ -103,10 +135,19 @@ function editProduct(index) {
 }
 
 // Excluir produto
-function deleteProduct(index) {
-    products.splice(index, 1);
-    localStorage.setItem('products', JSON.stringify(products));
-    renderProducts();
+async function deleteProduct(index) {
+    const productId = products[index].id;
+    try {
+        const response = await fetch(`/api/products/${productId}`, {
+            method: 'DELETE',
+        });
+        const data = await response.json();
+        if (data.success) {
+            await loadProducts();
+        }
+    } catch (error) {
+        console.error('Erro ao excluir produto:', error);
+    }
 }
 
 // Selecionar produto
@@ -143,5 +184,5 @@ function makeOrder() {
     window.open(whatsappLink, '_blank');
 }
 
-// Exibir tela de login ao carregar
-document.getElementById('loginSection').style.display = 'block';
+// Carregar produtos ao iniciar
+loadProducts();
